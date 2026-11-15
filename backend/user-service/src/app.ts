@@ -1,6 +1,6 @@
 import express, { type Express } from 'express';
-import { errorHandler } from './shared/middleware/error-handler.js';
-import { notFoundHandler } from './shared/middleware/not-found.js';
+import { errorHandler } from './middleware/error-handler.js';
+import { notFoundHandler } from './middleware/not-found.js';
 
 export const createApp = (): Express => {
   const app = express();

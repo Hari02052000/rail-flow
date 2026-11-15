@@ -39,28 +39,40 @@ These instructions apply to anyone, human or AI, modifying `backend/user-service
 
 ## Scope and current state
 
-The service is at its foundation stage. Do not infer implemented capabilities from the roadmap.
+The service is in early implementation. Do not infer implemented capabilities from the roadmap.
 
 Currently implemented:
 
 - Express app factory, `GET /health`, 404 handling, and centralized error handling.
 - Zod-validated environment configuration.
 - PostgreSQL pool creation, startup connectivity verification, and graceful shutdown.
+- `User` domain entity in `src/entities/user.entity.ts`.
+- Repository and service interfaces in `src/repositories` and `src/services`.
+- `users` table migration in `src/db/migrations`.
+- `PostgresUserRepository` implementation in `src/repositories/user.repository.ts`.
+- Redis client creation and startup connectivity verification.
+- `RedisOtpRepository` implementation in `src/repositories/otp.repository.ts`.
+- OTP generation/hashing utilities and a Nodemailer OTP sender.
+- Argon2id password hashing utilities in `src/utils/password.ts`.
+- `DefaultAuthService` implementation for registration, OTP sending, and email-verification OTP
+  verification in `src/services/auth.service.ts`.
+- Vitest test tooling with PostgreSQL/Redis integration tests and unit tests. Integration test files
+  run serially because they share the test database.
 - ESLint, Prettier, strict TypeScript, and `node-pg-migrate` scripts.
 
 Currently absent:
 
 - Any `/api/v1` endpoint.
-- Database tables or migration files.
-- User entities, repositories, services, controllers, or routes.
-- Password hashing, JWT/JWKS, Redis, OTP, email delivery, OAuth, or RBAC implementation.
-- Automated tests and a test script.
+- Controllers and routes.
+- JWT/JWKS, refresh tokens, OTP login, password reset, verified email delivery, OAuth, RBAC, OTP
+  resend cooldowns, and rate limiting.
+- HTTP integration tests and CI.
 
 Do not implement later roadmap milestones while working on an earlier authorized feature.
 
 ## Architecture conventions
 
-Use a practical, feature-first structure. Keep responsibilities clear:
+Use a practical, layered structure. Keep responsibilities clear:
 
 - **Routes** define endpoints and compose route-level middleware.
 - **Controllers** handle HTTP request/response concerns only.
@@ -118,22 +130,22 @@ Additional conventions:
 - Add tests with each implemented behavior. Prefer meaningful service tests plus HTTP integration
   tests for real endpoints.
 - Use a real PostgreSQL instance for repository and integration tests where practical.
-- Use a real Redis instance for OTP/rate-limit integration tests once Redis is implemented.
+- Use a real Redis instance for OTP integration tests.
 - Mock external services such as email or Google only at their boundaries, not the entire system.
-- There is no test script or test framework configured yet. If a task requires tests, add the
-  minimum appropriate tooling to `package.json` and update the lockfile.
+- Vitest is configured. Integration tests require `TEST_DATABASE_URL` pointing at a migrated test
+  database and `REDIS_URL` pointing at a reachable Redis instance.
 - Before declaring work complete, run the applicable commands from this directory:
 
   ```bash
   npm run typecheck
+  npm run typecheck:test
   npm run lint
   npm run build
-  # Only when package.json defines a "test" script:
   npm test
   ```
 
-- `npm test` is not currently available. Do not claim it was run until a real test script exists
-  and has actually been executed.
+- `npm test` runs Vitest. It fails fast when `TEST_DATABASE_URL` or `REDIS_URL` is missing; do not
+  claim it passed unless it was executed successfully against real services.
 - Report exact commands and actual outcomes. Never state or imply that a command passed without
   executing it.
 - If a command cannot run because required services or configuration are unavailable, say so

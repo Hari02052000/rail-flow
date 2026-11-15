@@ -3,14 +3,17 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { buildContainer } from './container.js';
 import { verifyDatabaseConnection } from './db/pool.js';
+import { verifyRedisConnection } from './db/redis.js';
 
 const start = async (): Promise<void> => {
   const container = buildContainer();
 
   try {
     await verifyDatabaseConnection(container.pool);
+    await verifyRedisConnection(container.redis);
   } catch (error) {
-    await container.pool.end();
+    await container.pool.end().catch(() => {});
+    container.redis.disconnect();
     throw error;
   }
 
@@ -44,8 +47,9 @@ const start = async (): Promise<void> => {
 
       try {
         await container.pool.end();
-      } catch (poolError) {
-        console.error('Error while closing the database pool:', poolError);
+        await container.redis.quit();
+      } catch (closeError) {
+        console.error('Error while closing connections:', closeError);
         process.exit(1);
       }
 

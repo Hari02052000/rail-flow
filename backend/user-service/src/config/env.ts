@@ -11,6 +11,21 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+  REDIS_URL: z.string().trim().min(1, 'REDIS_URL is required'),
+  REDIS_KEY_PREFIX: z.string().trim().min(1).default('railflow:user-service:'),
+  OTP_HMAC_SECRET: z.string().min(16, 'OTP_HMAC_SECRET must be at least 16 characters'),
+  OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive().default(60),
+  SMTP_HOST: z.string().trim().min(1, 'SMTP_HOST is required'),
+  SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
+  SMTP_SECURE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
+  SMTP_FROM: z.string().trim().min(1, 'SMTP_FROM is required'),
 });
 
 const parsed = envSchema.safeParse(process.env);

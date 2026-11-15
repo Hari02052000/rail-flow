@@ -16,24 +16,20 @@ what works today is the repository code and the **Current project status** secti
 
 ## Technology stack
 
-| Technology                        | Status                | Notes                                                                                       |
-| --------------------------------- | --------------------- | ------------------------------------------------------------------------------------------- |
-| Node.js                           | Implemented           | `package.json` requires Node.js `>=20`.                                                     |
-| TypeScript                        | Implemented           | Strict TypeScript, NodeNext ESM, compiled to `dist/`.                                       |
-| Express                           | Implemented           | Express 5 application with health, 404, and error middleware.                               |
-| PostgreSQL                        | Partially implemented | `pg` pool configuration and startup connectivity check exist. No schema or migrations yet.  |
-| Redis                             | Planned               | Intended for temporary OTP challenges and other ephemeral data. Not declared or configured. |
-| Argon2id                          | Planned               | Intended for password hashing. Not declared or configured for application use.              |
-| JWT (asymmetric signing and JWKS) | Planned               | No signing keys, JWT middleware, or JWKS endpoint exist.                                    |
-| Zod                               | Partially implemented | Used to validate environment variables. Request-body/path/query validation is planned.      |
-| `node-pg-migrate`                 | Implemented           | SQL migration commands are configured. No migration files have been created.                |
-| Docker                            | Planned               | No Dockerfile or Compose configuration exists.                                              |
-| Automated tests                   | Planned               | No test script, test framework, or test files are configured in the project.                |
-
-> Dependency warning: `node_modules` currently contains packages that are not declared in
-> `package.json` or `package-lock.json`, including Redis, JWT, Argon2, email, and testing-related
-> packages. They are reported by npm as extraneous. Do not rely on them until they are deliberately
-> added to the project and the lockfile is updated. A clean `npm ci` would remove them.
+| Technology                        | Status                | Notes                                                                                   |
+| --------------------------------- | --------------------- | --------------------------------------------------------------------------------------- |
+| Node.js                           | Implemented           | `package.json` requires Node.js `>=20`.                                                 |
+| TypeScript                        | Implemented           | Strict TypeScript, NodeNext ESM, compiled to `dist/`.                                   |
+| Express                           | Implemented           | Express 5 application with health, 404, and error middleware.                           |
+| PostgreSQL                        | Implemented           | `pg` pool, connectivity check, `users` table migration, and repository implementation.  |
+| Redis                             | Partially implemented | `ioredis` client, startup ping, and Redis-backed OTP session repository.                |
+| Argon2id                          | Implemented           | Argon2id password hashing in `src/utils/password.ts`, used by registration.             |
+| JWT (asymmetric signing and JWKS) | Planned               | No signing keys, JWT middleware, or JWKS endpoint exist.                                |
+| Zod                               | Partially implemented | Used to validate environment variables. Request-body/path/query validation is planned.  |
+| Email (SMTP)                      | Partially implemented | Nodemailer sender exists. Real SMTP delivery has not been verified in this environment. |
+| `node-pg-migrate`                 | Implemented           | SQL migration commands are configured. One migration creates the `users` table.         |
+| Docker                            | Implemented (local)   | `docker-compose.yaml` at the repository root runs PostgreSQL and Redis for development. |
+| Automated tests                   | Partially implemented | Vitest unit and PostgreSQL/Redis integration tests. No HTTP integration tests yet.      |
 
 ## User roles
 
@@ -61,8 +57,8 @@ An administrator is a trusted operator with elevated user-management responsibil
 
 ## Functional requirements
 
-All capabilities in this section are planned. None of the domain APIs described here are
-implemented yet.
+All capabilities in this section are planned as HTTP APIs. Registration and email-verification
+business logic exists in the auth service, but no routes or controllers are implemented yet.
 
 ### A. User registration
 
@@ -126,12 +122,12 @@ than separate implementations per feature.
 
 Supported purposes:
 
-- `EMAIL_VERIFICATION`
-- `LOGIN`
-- `PASSWORD_RESET`
+- `EMAIL_VERIFICATION` (implemented)
+- `LOGIN` (planned)
+- `PASSWORD_RESET` (planned)
 
-Redis is intended to store temporary OTP challenges. The final key design and record format must
-be reviewed before implementation.
+Redis stores temporary OTP challenges. The current implementation uses `otp:<sessionId>` records
+containing a purpose, normalized email, HMAC-SHA256 OTP digest, and attempt count.
 
 Security expectations:
 
@@ -148,7 +144,7 @@ Security expectations:
 
 ## Architecture principles
 
-The service uses a practical, feature-first organization rather than theoretical Clean
+The service uses a practical, layered organization rather than theoretical Clean
 Architecture. The architecture should evolve from actual requirements, not speculative layers.
 
 Responsibilities:
@@ -255,7 +251,24 @@ has been reviewed and approved.
 - 404 handling for unknown routes.
 - `node-pg-migrate` scripts configured for SQL migrations in `src/db/migrations`.
 - ESLint and Prettier configuration.
-- Dependency injection container currently limited to the PostgreSQL pool.
+- Dependency injection container wiring the PostgreSQL pool, Redis client, repositories, email
+  sender, and auth service.
+- `User` domain entity defining identity/profile fields, nullable password hash and Google ID, and
+  email-verification status.
+- Repository and service interfaces for user persistence, OTP sessions, and authentication.
+- `users` table migration in `src/db/migrations`, applied to the local development and test
+  databases.
+- `PostgresUserRepository` implementation with parameterized queries and duplicate-email handling.
+- Redis connection helper with startup connectivity verification.
+- `RedisOtpRepository` for temporary OTP sessions with hashed OTPs, TTL expiry, attempt tracking,
+  and atomic consumption.
+- OTP generation, HMAC-SHA256 hashing, constant-time verification, and session ID helpers.
+- Argon2id password hashing utilities with explicit reviewed parameters.
+- `DefaultAuthService` implementing registration, OTP sending, and email-verification OTP
+  verification. Registration normalizes email, hashes passwords, rejects duplicates, and
+  automatically sends a verification OTP.
+- Nodemailer-based OTP email sender.
+- Vitest test tooling with PostgreSQL and Redis integration tests and unit tests.
 - Project documentation (this README and `AGENTS.md`).
 
 ### In progress
@@ -264,26 +277,21 @@ None currently.
 
 ### Planned
 
-- Database schema and migrations.
-- User registration and email verification.
+- HTTP registration and email-verification endpoints.
 - Email/password login, OTP login, and Google OAuth.
 - Asymmetric JWT access tokens, JWKS, refresh-token rotation, reuse detection, and revocation.
 - Password reset.
 - User profile and admin APIs.
 - RBAC enforcement.
-- Redis-backed OTP infrastructure.
-- Automated tests, security hardening, and deployment tooling.
+- OTP resend cooldowns, rate limiting, and OTP login/password-reset purposes.
+- Security hardening and deployment tooling.
 
 ### Not started
 
-- User domain entities, repositories, services, controllers, and routes.
-- Any `/api/v1` endpoint.
-- Database tables.
-- Redis integration.
-- Password hashing integration.
+- Controllers, routes, and any `/api/v1` endpoint.
 - JWT signing, verification, or JWKS.
-- Email delivery integration.
-- Test suite and CI.
+- Verified SMTP delivery and email templates.
+- CI.
 
 ## Local development
 
@@ -292,10 +300,11 @@ None currently.
 - Node.js `>=20`.
 - npm.
 - A reachable PostgreSQL instance for the service configuration.
-- Redis is not required yet because no Redis-backed features are implemented.
+- A reachable Redis instance for OTP sessions.
 
-No Docker configuration exists in this repository. Docker-based local setup is planned but must
-not be documented as working until it is added and verified.
+Local development infrastructure is provided by the `docker-compose.yaml` at the repository root.
+From the repository root, run `docker compose up -d`. It starts PostgreSQL on `127.0.0.1:5432`
+(user `railflow`, password `railflow_dev_password`) and Redis on `127.0.0.1:6379`.
 
 ### Setup
 
@@ -315,26 +324,28 @@ Run commands from `backend/user-service`:
 
    Do not overwrite an existing `.env` file. If `.env` is already present, edit it in place.
 
-3. Ensure `.env` contains `DATABASE_URL`.
+3. Ensure `.env` contains the required values.
 
-   The current local `.env` contains only `NODE_ENV`, `HOST`, and `PORT`. The application requires
-   `DATABASE_URL`; without it, startup exits during environment validation. Add the missing value
-   to the existing file, adjusting it for your PostgreSQL instance:
+   The application requires `DATABASE_URL`, `REDIS_URL`, `OTP_HMAC_SECRET`, `SMTP_HOST`, and
+   `SMTP_FROM`. The local Docker Compose setup uses these connection strings:
 
    ```dotenv
-   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/railflow_users
+   DATABASE_URL=postgresql://railflow:railflow_dev_password@127.0.0.1:5432/railflow_users
+   TEST_DATABASE_URL=postgresql://railflow:railflow_dev_password@127.0.0.1:5432/railflow_users_test
+   REDIS_URL=redis://127.0.0.1:6379
    ```
 
-4. Ensure the PostgreSQL database named by `DATABASE_URL` exists, using your local PostgreSQL
-   tooling. No database-provisioning command is provided or verified by this repository.
+4. Ensure the PostgreSQL databases named by `DATABASE_URL` and `TEST_DATABASE_URL` exist. The local
+   development setup uses `railflow_users` and `railflow_users_test`.
 
-5. Run migrations:
+5. Run migrations for both databases:
 
    ```bash
    npm run db:migrate
+   DATABASE_URL="$TEST_DATABASE_URL" npm run db:migrate
    ```
 
-   There are currently no migration files, so this does not create a schema yet.
+   This applies the `users` table migration. It requires a reachable PostgreSQL instance.
 
 6. Start the development server:
 
@@ -348,22 +359,34 @@ Run commands from `backend/user-service`:
    curl http://localhost:3000/health
    ```
 
-The exact host and port come from `HOST` and `PORT`. The server verifies the database connection
-before it starts listening.
+The exact host and port come from `HOST` and `PORT`. The server verifies the database and Redis
+connections before it starts listening.
 
 ### Environment variables
 
-| Variable            | Required | Default       | Notes                                          |
-| ------------------- | -------- | ------------- | ---------------------------------------------- |
-| `NODE_ENV`          | No       | `development` | One of `development`, `test`, or `production`. |
-| `HOST`              | No       | `0.0.0.0`     | HTTP bind address.                             |
-| `PORT`              | No       | `3000`        | HTTP port, 1-65535.                            |
-| `DATABASE_URL`      | Yes      | None          | PostgreSQL connection string.                  |
-| `DATABASE_POOL_MAX` | No       | `10`          | Maximum pool size, 1-100.                      |
-| `DATABASE_SSL`      | No       | `false`       | `true` or `false`.                             |
+| Variable                      | Required | Default                  | Notes                                                                         |
+| ----------------------------- | -------- | ------------------------ | ----------------------------------------------------------------------------- |
+| `NODE_ENV`                    | No       | `development`            | One of `development`, `test`, or `production`.                                |
+| `HOST`                        | No       | `0.0.0.0`                | HTTP bind address.                                                            |
+| `PORT`                        | No       | `3000`                   | HTTP port, 1-65535.                                                           |
+| `DATABASE_URL`                | Yes      | None                     | PostgreSQL connection string.                                                 |
+| `DATABASE_POOL_MAX`           | No       | `10`                     | Maximum pool size, 1-100.                                                     |
+| `DATABASE_SSL`                | No       | `false`                  | `true` or `false`.                                                            |
+| `TEST_DATABASE_URL`           | No       | None                     | Separate PostgreSQL database for integration tests. Required by `npm test`.   |
+| `REDIS_URL`                   | Yes      | None                     | Redis connection string.                                                      |
+| `REDIS_KEY_PREFIX`            | No       | `railflow:user-service:` | Prefix applied to Redis keys.                                                 |
+| `OTP_HMAC_SECRET`             | Yes      | None                     | HMAC secret for OTP hashing. Minimum 16 characters.                           |
+| `OTP_TTL_SECONDS`             | No       | `300`                    | OTP session lifetime in seconds.                                              |
+| `OTP_MAX_ATTEMPTS`            | No       | `5`                      | Maximum verification attempts per OTP session.                                |
+| `OTP_RESEND_COOLDOWN_SECONDS` | No       | `60`                     | Minimum seconds between OTP resend requests. Configured; enforcement planned. |
+| `SMTP_HOST`                   | Yes      | None                     | SMTP server host.                                                             |
+| `SMTP_PORT`                   | No       | `587`                    | SMTP server port.                                                             |
+| `SMTP_SECURE`                 | No       | `false`                  | `true` or `false`.                                                            |
+| `SMTP_USER`                   | No       | Empty                    | SMTP username.                                                                |
+| `SMTP_PASS`                   | No       | Empty                    | SMTP password.                                                                |
+| `SMTP_FROM`                   | Yes      | None                     | From address for OTP emails.                                                  |
 
-Additional variables for JWT keys, Redis, email, OTP, and OAuth will be introduced with the
-features that require them.
+Additional variables for JWT keys and OAuth will be introduced with the features that require them.
 
 ### Available scripts
 
@@ -373,17 +396,21 @@ features that require them.
 | `npm run build`             | Compile TypeScript to `dist/`.                  |
 | `npm start`                 | Run the compiled service from `dist/server.js`. |
 | `npm run typecheck`         | Run TypeScript without emitting output.         |
+| `npm run typecheck:test`    | Type-check tests with `tsconfig.test.json`.     |
 | `npm run lint`              | Run ESLint.                                     |
 | `npm run lint:fix`          | Run ESLint with automatic fixes.                |
 | `npm run format`            | Format files with Prettier.                     |
 | `npm run format:check`      | Check formatting without writing changes.       |
+| `npm test`                  | Run the Vitest suite.                           |
+| `npm run test:watch`        | Run Vitest in watch mode.                       |
 | `npm run db:migrate`        | Apply pending migrations.                       |
 | `npm run db:migrate:down`   | Roll back the latest migration.                 |
 | `npm run db:migrate:create` | Create a new SQL migration.                     |
 | `npm run db:migrate:redo`   | Roll back and re-apply the latest migration.    |
 | `npm run clean`             | Remove `dist/`.                                 |
 
-There is currently no `test` script.
+Repository integration tests require `TEST_DATABASE_URL` and a migrated test database. `npm test`
+fails fast with a clear error when it is not configured.
 
 ## Project structure
 
@@ -391,23 +418,45 @@ There is currently no `test` script.
 user-service/
   src/
     app.ts                        # Express application factory
-    server.ts                     # Startup, DB verification, graceful shutdown
+    server.ts                     # Startup, DB/Redis verification, graceful shutdown
     container.ts                  # Practical dependency container
     config/
       env.ts                      # Zod-validated environment configuration
     db/
       pool.ts                     # PostgreSQL pool creation and connectivity check
-      migrations/                 # SQL migrations (currently empty)
-    shared/
-      errors/app-error.ts         # AppError hierarchy and error codes
-      middleware/
-        error-handler.ts          # Central error response middleware
-        not-found.ts              # 404 middleware
-    application/                  # Reserved for application services/ports
-    domain/                       # Reserved for domain concepts
-    infrastructure/               # Reserved for DB/Redis/email/security integrations
-    interfaces/http/              # Reserved for routes, controllers, validation
-  test/                           # Reserved for tests (currently empty)
+      redis.ts                    # Redis client creation and connectivity check
+      migrations/
+        1794750723477_create-users.sql # users table
+    entities/
+      user.entity.ts              # User domain entity
+    errors/
+      app-error.ts                # AppError hierarchy and error codes
+    middleware/
+      error-handler.ts            # Central error response middleware
+      not-found.ts                # 404 middleware
+    routes/                       # Reserved for endpoint definitions
+    controllers/                  # Reserved for HTTP controllers
+    services/
+      auth.service.interface.ts   # AuthService contract and auth DTOs
+      auth.service.ts             # DefaultAuthService implementation
+    repositories/
+      user.repository.interface.ts # UserRepository contract
+      user.repository.ts          # PostgresUserRepository implementation
+      otp.repository.interface.ts  # OtpRepository and OTP session types
+      otp.repository.ts           # RedisOtpRepository implementation
+    schemas/                      # Reserved for request validation schemas
+    utils/
+      otp.ts                      # OTP generation, hashing, and verification
+      password.ts                 # Argon2id password hashing and verification
+      email.ts                    # SMTP OTP email sender and email normalization
+  test/
+    user.repository.integration.test.ts # PostgreSQL repository tests
+    otp.repository.integration.test.ts  # Redis OTP repository tests
+    auth.service.integration.test.ts    # Auth service integration tests
+    otp.utils.test.ts                   # OTP utility unit tests
+    password.utils.test.ts              # Argon2id password utility tests
+    email.utils.test.ts                 # Email sender and normalization unit tests
+  vitest.config.ts                      # Serializes integration test files
 ```
 
 The empty directories indicate intended areas, not implemented features. Do not treat their
@@ -417,16 +466,16 @@ existence as evidence that code has been written.
 
 The following must be decided and reviewed before or during the relevant milestone:
 
-- Final users and credential schema, including email normalization and uniqueness behavior.
+- Final users and credential schema, including remaining account-status fields.
 - Whether OAuth identities are stored in separate identity rows.
 - Refresh-token persistence model, token-family design, and revocation semantics.
 - JWT claim set, key identifiers, key storage, and rotation procedure.
 - JWKS caching and publication details for other services.
 - Email provider and delivery/retry strategy.
-- OTP Redis key format, digest strategy, and rate-limit dimensions.
+- OTP resend cooldown and rate-limit dimensions.
 - Account-status model and the exact email-verification enforcement policy.
 - Public versus self versus admin user representations.
-- Testing strategy, including real PostgreSQL/Redis integration environments.
+- Test coverage expansion and CI.
 
 ## Related documentation
 
